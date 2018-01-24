@@ -1,0 +1,111 @@
+
+1. Connect to the RA database:
+$ sqlplus phoenix@OGCM
+
+2. Create the new process flow. You must specify the process_flow_name, it can contain a maximum of 50 characters.
+
+
+variable pfid NUMBER;
+BEGIN
+  :pfid := pkgprocess_flows.new('Volte Bulk P10 Input -- No Approval');
+END;
+/
+print :pfid;
+
+Commit this to the DB.
+
+3. To review the newly created process flow:
+select * from process_flows where id = 21;
+
+
+4. Replace :pfid with the numeric value that was created in step 2.
+
+variable stepid NUMBER;
+BEGIN
+-- step 1
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 1 -- internal
+,p_argument => 'init'
+,p_description => 'initialization'
+);
+-- step 2
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 1 -- internal
+,p_argument => 'getbulkrequest'
+,p_description => 'SCP bulk request file : REST
+server --> BulkProcessor'
+);
+-- step 3
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 3 -- execute
+,p_argument => '/opt/bulkprocessorclient/Volte/P10/bin/InputProcessor.sh'
+,p_description => 'Generates XKMS request file(s) to
+be sent to the XKMS Responder by
+the next step'
+);
+-- step 4
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 1 -- internal
+,p_argument => 'sendrequest'
+,p_description => 'Multi-request : SCP XKMS request
+file(s) : BulkProcessor -->
+XKMS server'
+);
+-- step 5
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 1 -- internal
+,p_argument => 'wait'
+,p_description => 'Multi-request: Waits for agent
+to have processed request
+file(s)'
+);
+-- step 6
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 1 -- internal
+,p_argument => 'getresponse'
+,p_description => 'Multi-request: Fetches generated
+XKMS response file(s) from
+XKMS server'
+);
+-- step 7
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 3 -- execute
+,p_argument => '/opt/bulkprocessorclient/Volte/P10/bin/OutputProcessor.sh'
+,p_description => 'Handles the response file(s)
+from XKMS (if needed), and
+identifies (creates if needed)
+one file that has to be made
+downloadable in CAdmin by the
+next by the next steps of the
+process flow'
+);
+-- step 8
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 1 -- internal
+,p_argument => 'publishdownload'
+,p_description => 'SCP result ZIP file :
+BulkProcessor --> REST server
+(for download)'
+);
+-- step 9
+:stepid := pkgPROCESS_FLOW_STEPS.newUpdStep(p_pf_id => :pfid
+,p_st_id => 4 --publishing
+,p_description => 'GUI STEP - NO BULK PROCESSOR'
+,p_argument => null
+);
+END;
+/
+
+
+
+5. To view the newly created flow:
+select * from process_flow_steps where process_flow_id = :pfid order by seqnr;
+
+6. Enable the process flow using the :pfid value:
+
+BEGIN
+pkgPROCESS_FLOWS.upd(p_pf_id => :pfid
+,p_pf_status => 1
+);
+END;
+/
